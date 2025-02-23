@@ -472,7 +472,21 @@ CONTAINER ID   IMAGE     COMMAND       CREATED         STATUS          PORTS    
     }
 ]
 
+####
+#
+# Too much info.? Filter your outputs
+docker inspect ubuntu -f '{{.NetworkSettings.IPAddress}}'
+docker inspect ubuntu -f '{{json .NetworkSettings.Networks}}'
 
+# Attach to container and check if apache is running. If not, start it.
+docker attach ubuntu
+service apache2 status
+service apache2 start
+# If exited now, the container will be stopped and even if started back, apache process won't auto-start
+# Instead of exit, just detach the container
+PRESS Ctrl-P and Ctrl-Q one after another
+
+#####
 [root@server ~]# docker attach mycontainer
 root@1cc3158836af:/#
 root@1cc3158836af:/#
