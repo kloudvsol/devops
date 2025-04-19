@@ -1,0 +1,11 @@
+git clone https://github.com/kloudvsol/devops.git
+ls 
+cd devops
+ls 
+cd jenkins
+ls 
+docker rm -f c1
+docker build -t myimage .
+docker image ls 
+docker run -itd -p 80:80 --name c1 myimage
+docker container ls
