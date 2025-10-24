@@ -1,0 +1,65 @@
+create a  docker container with ubuntu image using docker run cmd  and get inside the container install tomcat on it and host a simple website 
+
+Step 1: Run Ubuntu Container
+
+docker run -it --name ubuntu-tomcat -p 8080:8080 ubuntu:20.04 /bin/bash
+
+This command:
+
+Starts an interactive Ubuntu container
+Names it ubuntu-tomcat
+Maps port 8080 of the container to your host
+Opens a bash shell inside the container
+
+
+Step 2: Inside the Container – Install Java and Tomcat
+
+Once inside the container:
+
+# Update package list
+apt-get update
+
+# Install Java (required for Tomcat)
+apt-get install -y openjdk-11-jdk wget
+
+# Set JAVA_HOME (optional but good practice)
+export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+export PATH=$JAVA_HOME/bin:$PATH
+
+# Download and extract Tomcat
+wget https://downloads.apache.org/tomcat/tomcat-9/v9.0.83/bin/apache-tomcat-9.0.83.tar.gz
+tar -xvzf apache-tomcat-9.0.83.tar.gz
+mv apache-tomcat-9.0.83 /opt/tomcat
+
+Step 3: Add a Simple Website
+Create a basic HTML file:
+
+mkdir /opt/tomcat/webapps/ROOT
+echo "<html><body><h1>Hello from Tomcat on Ubuntu Docker!</h1></body></html>" > /opt/tomcat/webapps/ROOT/index.html
+
+
+Step 4: Start Tomcat
+
+##############################################
+
+To convert your running Ubuntu container (with Tomcat and your website installed) into a Docker image using the docker commit command, follow these steps:
+
+Step 1: Exit the Container (if you're still inside)
+Press Ctrl + P then Ctrl + Q to detach from the container without stopping it.
+
+Step 2: Commit the Container to an Image
+
+docker commit ubuntu-tomcat pradeep/ubuntu-tomcat:v1
+
+This command:
+
+Takes the container named ubuntu-tomcat
+Creates a new image named pradeep/ubuntu-tomcat with tag v1
+
+
+Step 3: Run the New Image
+
+docker run -d -p 8080:8080 pradeep/ubuntu-tomcat:v1
+
+This will start a new container from your custom image and expose Tomcat on port 8080.
+
