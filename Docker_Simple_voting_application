@@ -1,0 +1,327 @@
+Building a simple voting application with Docker involves using Docker Compose to orchestrate multiple containers that work together as a single application. This approach is ideal for setting up multi-service, distributed applications, as demonstrated by the official Docker example voting app. 
+
+The application typically consists of five services: 
+Vote: A Python web front-end that lets users vote for one of two options (e.g., Cats vs. Dogs).
+Redis: An in-memory queue that collects and temporarily stores the new votes.
+Worker: A .NET or Node.js background service that pulls new votes from the Redis queue.
+Postgres: A database that stores the definitive vote counts.
+Result: A Node.js web app that displays the voting results in real-time, retrieving the data from Postgres. 
+
+Prerequisites
+Docker and Docker Compose installed.
+A text editor.
+A terminal or command prompt. 
+Step 1: Set up the project structure
+First, create a project directory and then create subdirectories for each of the custom-built services: vote, worker, and result. 
+
+mkdir docker-voting-app
+cd docker-voting-app
+mkdir vote worker result
+
+Step 2: Create the Vote service
+The vote service is a simple Python Flask application. 
+
+1. Create vote/app.py
+This Python file contains the logic for the voting front-end. It connects to Redis to store the user's vote. 
+
+import os
+import socket
+from flask import Flask, render_template, request, jsonify
+from redis import Redis
+
+app = Flask(__name__)
+redis = Redis(host='redis', port=6379)
+
+@app.route('/', methods=['GET', 'POST'])
+def vote():
+    if request.method == 'POST':
+        vote_data = request.form['vote']
+        redis.rpush('votes', vote_data)
+        return jsonify({'message': 'Vote recorded successfully!'})
+    return render_template('index.html', hostname=socket.gethostname())
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=80)
+
+
+
+-----------------------------------------------------
+
+2. Create vote/requirements.txt
+This file lists the Python dependencies. 
+
+Flask
+redis
+
+------------------------------------------------
+
+3. Create vote/Dockerfile
+This Dockerfile builds the Python application image. 
+
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . .
+
+EXPOSE 80
+
+CMD ["python", "app.py"]
+
+
+
+--------------------------------
+
+4. Create vote/templates/index.html
+This is the HTML file for the voting front-end. 
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cats vs. Dogs Voting</title>
+</head>
+<body>
+    <h1>Cats vs. Dogs</h1>
+    <p>Vote for your favorite animal:</p>
+    <form method="post">
+        <button type="submit" name="vote" value="cats">Cats</button>
+        <button type="submit" name="vote" value="dogs">Dogs</button>
+    </form>
+    <p><a href="/results">View Results</a></p>
+</body>
+</html>
+
+
+-----------------------------------------------------------------------
+
+Step 3: Create the Worker service 
+
+The worker service pulls votes from Redis and stores them in the Postgres database. 
+1. Create worker/worker.py
+This Python script processes the vote queue.
+
+import time
+import redis
+import psycopg2
+
+redis_conn = redis.Redis(host='redis')
+db_conn = psycopg2.connect("dbname=voting_db user=postgres password=password host=db")
+cursor = db_conn.cursor()
+
+cursor.execute("CREATE TABLE IF NOT EXISTS votes (vote_option VARCHAR(10), count INT);")
+cursor.execute("INSERT INTO votes (vote_option, count) VALUES (%s, %s) ON CONFLICT (vote_option) DO NOTHING;", ('cats', 0))
+cursor.execute("INSERT INTO votes (vote_option, count) VALUES (%s, %s) ON CONFLICT (vote_option) DO NOTHING;", ('dogs', 0))
+db_conn.commit()
+
+while True:
+    vote = redis_conn.blpop('votes', timeout=10)
+    if vote:
+        vote_option = vote[1].decode('utf-8')
+        cursor.execute("UPDATE votes SET count = count + 1 WHERE vote_option = %s;", (vote_option,))
+        db_conn.commit()
+        print(f"Processed vote for: {vote_option}")
+    time.sleep(1)
+-----------------------------------------------------------------
+
+
+2. Create worker/requirements.txt
+
+redis
+psycopg2-binary
+
+
+-------------------------------------------------------------------
+
+3. Create worker/Dockerfile
+
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . .
+
+CMD ["python", "worker.py"]
+
+
+------------------------------------------------------
+
+
+
+Step 4: Create the Result service
+The result service is a simple Python Flask application that queries the Postgres database and displays the results. 
+1. Create result/app.py
+
+
+
+import os
+from flask import Flask, render_template, jsonify
+import psycopg2
+
+app = Flask(__name__)
+db_conn = psycopg2.connect("dbname=voting_db user=postgres password=password host=db")
+cursor = db_conn.cursor()
+
+@app.route('/results')
+def results():
+    cursor.execute("SELECT vote_option, count FROM votes;")
+    results = {row[0]: row[1] for row in cursor.fetchall()}
+    return render_template('results.html', results=results)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=80)
+
+
+
+-----------------------------------------------------------------------
+
+
+2. Create result/requirements.txt
+
+Flask
+psycopg2-binary
+
+
+-----------------------------------------------
+
+
+3. Create result/Dockerfile 
+
+
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . .
+
+EXPOSE 80
+
+CMD ["python", "app.py"]
+
+
+
+-----------------------------------------------------
+
+
+4. Create result/templates/results.html 
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Voting Results</title>
+</head>
+<body>
+    <h1>Voting Results</h1>
+    <table>
+        <tr>
+            <th>Option</th>
+            <th>Votes</th>
+        </tr>
+        {% for option, count in results.items() %}
+        <tr>
+            <td>{{ option }}</td>
+            <td>{{ count }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    <p><a href="/">Vote Again</a></p>
+</body>
+</html>
+
+
+--------------------------
+
+Step 5: Configure Docker Compose 
+In your root docker-voting-app directory, create a docker-compose.yml file to define and link all the services. 
+1. Create docker-compose.yml 
+
+
+
+version: '3.7'
+
+services:
+  vote:
+    build: ./vote
+    ports:
+      - "5000:80"
+    depends_on:
+      - redis
+    networks:
+      - voting-net
+
+  redis:
+    image: redis:latest
+    networks:
+      - voting-net
+
+  worker:
+    build: ./worker
+    depends_on:
+      - redis
+      - db
+    networks:
+      - voting-net
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=voting_db
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - voting-net
+
+  result:
+    build: ./result
+    ports:
+      - "5001:80"
+    depends_on:
+      - db
+    networks:
+      - voting-net
+
+networks:
+  voting-net:
+
+volumes:
+  db-data:
+
+
+
+----------------------------------------------
+
+
+Step 6: Run the application
+With all the files in place, you can now start the entire application stack with a single command. 
+Make sure you are in the docker-voting-app root directory.
+Run the following command to build the custom images and start the containers in detached mode:
+
+
+docker-compose up --build -d
+---------------------------------------------
+
+Confirm that all containers are running:
+
+docker-compose ps
+
+------------------------------
+
+Access the voting front-end by navigating to http://localhost:5000 in your web browser.
+View the live results dashboard by visiting http://localhost:5001. 
+Step 7: Clean up
+When you are done, you can stop and remove all containers, networks, and volumes with a single command: 
+
+
+docker-compose down --volumes
